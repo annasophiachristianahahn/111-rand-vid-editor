@@ -1,11 +1,32 @@
-// Helper: Append progress messages into the status div
-function updateProgress(message) {
-  const statusDiv = document.getElementById('status');
-  const p = document.createElement('p');
-  p.textContent = message;
-  statusDiv.appendChild(p);
-  statusDiv.scrollTop = statusDiv.scrollHeight;
+// --- Begin: Optimized updateProgress ---
+const progressMessages = [];
+let progressTimeout = null;
+
+function flushProgress() {
+    const statusDiv = document.getElementById('status');
+    if (progressMessages.length > 0) {
+        // Use a DocumentFragment to minimize DOM reflows.
+        const fragment = document.createDocumentFragment();
+        progressMessages.forEach(message => {
+            const p = document.createElement('p');
+            p.textContent = message;
+            fragment.appendChild(p);
+        });
+        statusDiv.appendChild(fragment);
+        statusDiv.scrollTop = statusDiv.scrollHeight;
+        progressMessages.length = 0;
+    }
+    progressTimeout = null;
 }
+
+function updateProgress(message) {
+    progressMessages.push(message);
+    // Flush updates every 200 ms.
+    if (!progressTimeout) {
+        progressTimeout = setTimeout(flushProgress, 200);
+    }
+}
+// --- End: Optimized updateProgress ---
 
 document.getElementById('start-button').addEventListener('click', async () => {
   const files = document.getElementById('video-files').files;
@@ -133,8 +154,22 @@ async function processVideos(files, finalLength, minClipLength, maxClipLength, z
       lastIndex = candidateIndex;
       const candidate = filesArray[candidateIndex];
       const duration = await getVideoDuration(candidate);
-      const clipLength = getRandomClipLength(minClipLength, maxClipLength, duration);
-      const startTime = getRandomStartTime(duration, clipLength);
+      
+      // Choose initial clipLength and startTime.
+      let clipLength = getRandomClipLength(minClipLength, maxClipLength, duration);
+      let startTime = getRandomStartTime(duration, clipLength);
+      
+      // For a single file, ensure the new clip does not overlap or nearly duplicate the previous clip.
+      if (filesArray.length === 1 && clipConfs.length > 0) {
+          const prev = clipConfs[clipConfs.length - 1];
+          // Keep reselecting until the new clip's segment does not overlap or is too close to the previous clip.
+          while ((startTime < prev.startTime + prev.clipLength && startTime + clipLength > prev.startTime) ||
+                 (Math.abs(startTime - prev.startTime) < 1)) {
+              clipLength = getRandomClipLength(minClipLength, maxClipLength, duration);
+              startTime = getRandomStartTime(duration, clipLength);
+          }
+      }
+      
       clipConfs.push({ file: candidate, startTime, clipLength });
       totalDuration += clipLength;
       updateProgress(`Added clip from ${candidate.name}: start=${startTime.toFixed(2)}s, length=${clipLength.toFixed(2)}s. Total planned duration: ${totalDuration.toFixed(2)}s`);
