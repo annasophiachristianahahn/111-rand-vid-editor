@@ -1,3 +1,6 @@
+// Global debug flag. Set to true to enable detailed logging from helper functions.
+const DEBUG = false;
+
 // --- Begin: Optimized updateProgress ---
 const progressMessages = [];
 let progressTimeout = null;
@@ -20,6 +23,7 @@ function flushProgress() {
 }
 
 function updateProgress(message) {
+    if (!DEBUG) return; // Skip logging when DEBUG is false
     progressMessages.push(message);
     // Flush updates every 200 ms.
     if (!progressTimeout) {
@@ -275,7 +279,9 @@ function getVideoDuration(file) {
       const tempVideo = document.createElement('video');
       tempVideo.src = URL.createObjectURL(file);
       tempVideo.onloadedmetadata = () => {
-          updateProgress(`Loaded metadata for ${file.name}: duration ${tempVideo.duration.toFixed(2)}s`);
+          if (DEBUG) {
+              updateProgress(`Loaded metadata for ${file.name}: duration ${tempVideo.duration.toFixed(2)}s`);
+          }
           resolve(tempVideo.duration);
       };
   });
@@ -285,13 +291,17 @@ function getRandomClipLength(minClipLength, maxClipLength, duration) {
   const minLength = (minClipLength / 100) * duration;
   const maxLength = (maxClipLength / 100) * duration;
   const clipLength = Math.random() * (maxLength - minLength) + minLength;
-  updateProgress(`Determined clip length: ${clipLength.toFixed(2)}s (duration ${duration.toFixed(2)}s)`);
+  if (DEBUG) {
+      updateProgress(`Determined clip length: ${clipLength.toFixed(2)}s (duration ${duration.toFixed(2)}s)`);
+  }
   return clipLength;
 }
 
 function getRandomStartTime(duration, clipLength) {
   const startTime = Math.random() * (duration - clipLength);
-  updateProgress(`Random start time chosen: ${startTime.toFixed(2)}s for clip length ${clipLength.toFixed(2)}s`);
+  if (DEBUG) {
+      updateProgress(`Random start time chosen: ${startTime.toFixed(2)}s for clip length ${clipLength.toFixed(2)}s`);
+  }
   return startTime;
 }
 
@@ -360,8 +370,9 @@ function playActiveClip(video, clipConf, canvas, ctx, zoomConfig, previousClip, 
           // Using a local timer to track the clip duration.
           const clipStartTimestamp = performance.now();
           const drawFrame = () => {
-              // If the overall recording time exceeds finalLength, stop immediately.
-              if (performance.now() - recordStartTime >= finalLength * 1000) {
+              const now = performance.now();
+              // If overall recording time exceeds finalLength, stop immediately.
+              if (now - recordStartTime >= finalLength * 1000) {
                   resolve();
                   return;
               }
@@ -390,8 +401,8 @@ function playActiveClip(video, clipConf, canvas, ctx, zoomConfig, previousClip, 
                   ctx.restore();
               }
               
-              // Check using the timer instead of relying solely on video.currentTime.
-              if (performance.now() - clipStartTimestamp >= clipLength * 1000) {
+              // Use the cached `now` value for the timer check.
+              if (now - clipStartTimestamp >= clipLength * 1000) {
                   updateProgress(`Clip from ${file.name} completed.`);
                   resolve();
               } else {
