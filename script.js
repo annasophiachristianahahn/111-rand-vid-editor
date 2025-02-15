@@ -79,17 +79,25 @@ document.getElementById('start-button').addEventListener('click', async () => {
 
 async function processVideos(files, finalLength, minClipLength, maxClipLength, zoomProbability, minZoom, maxZoom, finalWidth, finalHeight, flipProbability) {
   updateProgress('Initializing processing...');
-  
-  // Prepare canvas
-  const canvas = document.createElement('canvas');
-  canvas.width = finalWidth;
-  canvas.height = finalHeight;
-  updateProgress(`Canvas prepared: ${finalWidth}px x ${finalHeight}px`);
+
+  // Prepare canvas.
+  // Use OffscreenCanvas if available, which may offload rendering work off the main thread.
+  let canvas;
+  if (typeof OffscreenCanvas !== 'undefined') {
+      canvas = new OffscreenCanvas(finalWidth, finalHeight);
+      updateProgress('Using OffscreenCanvas for rendering.');
+  } else {
+      canvas = document.createElement('canvas');
+      canvas.width = finalWidth;
+      canvas.height = finalHeight;
+      updateProgress('Using traditional canvas for rendering.');
+  }
 
   const ctx = canvas.getContext('2d');
   const chunks = [];
 
-  // Set up recording stream
+  // Set up recording stream.
+  // (Note: if using OffscreenCanvas – make sure your target browser supports captureStream on OffscreenCanvas.)
   const stream = canvas.captureStream(30);
   updateProgress('Canvas capture stream started at 30 FPS.');
 
@@ -107,7 +115,7 @@ async function processVideos(files, finalLength, minClipLength, maxClipLength, z
       recorder = new MediaRecorder(stream);
   }
 
-  // Report encoding chunk progress
+  // Report encoding chunk progress.
   recorder.ondataavailable = (e) => {
       if (e.data && e.data.size > 0) {
           updateProgress(`Encoding chunk received: ${e.data.size} bytes.`);
@@ -122,7 +130,7 @@ async function processVideos(files, finalLength, minClipLength, maxClipLength, z
       document.getElementById('output-video').src = videoURL;
       updateProgress('Video processing completed.');
 
-      // Show and configure the DOWNLOAD button
+      // Show and configure the DOWNLOAD button.
       const downloadBtn = document.getElementById('download-button');
       downloadBtn.style.display = 'block';
       downloadBtn.onclick = () => {
@@ -166,7 +174,6 @@ async function processVideos(files, finalLength, minClipLength, maxClipLength, z
       // For a single file, ensure the new clip does not overlap or nearly duplicate the previous clip.
       if (filesArray.length === 1 && clipConfs.length > 0) {
           const prev = clipConfs[clipConfs.length - 1];
-          // Keep reselecting until the new clip's segment does not overlap or is too close to the previous clip.
           while ((startTime < prev.startTime + prev.clipLength && startTime + clipLength > prev.startTime) ||
                  (Math.abs(startTime - prev.startTime) < 1)) {
               clipLength = getRandomClipLength(minClipLength, maxClipLength, duration);
@@ -221,7 +228,6 @@ async function processVideos(files, finalLength, minClipLength, maxClipLength, z
 
   let currentPlayerIndex = 0;
   let previousClip = null;
-  // Build zoomConfig including the flipProbability.
   const zoomConfig = { zoomProbability, minZoom, maxZoom, flipProbability };
 
   // Process clips while within finalLength.
